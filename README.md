@@ -68,7 +68,7 @@ The LLM calls the tool with this shape:
       description?: string; // Optional hint shown below label
     }>;                     // 2–4 options
     multiSelect: boolean;   // true = checkboxes, false = single pick
-  }>                        // 1–4 questions
+  }>                        // 1–6 questions
 }
 ```
 
@@ -80,6 +80,9 @@ Answers are returned as:
     [questionText]: "Selected Label"          // single-select
     [questionText]: "Label A, Label B"        // multi-select (joined)
     [questionText]: "user typed text"         // free-text
+  },
+  notes: {
+    [questionText]: "Additional context"      // optional answer note
   }
 }
 ```
@@ -95,6 +98,7 @@ Answers are returned as:
 | `Space`          | Checkbox option               | Toggle selection           |
 | `Enter`          | Multi-select (with selection) | Confirm                    |
 | `Space` or `Tab` | "Type something..." row       | Open inline editor         |
+| `N`              | Question tab                  | Add or edit answer note    |
 | `Enter`          | Editor (with text)            | Save and close             |
 | `Enter`          | Editor (empty)                | Clear saved text and close |
 | `Esc`            | Editor                        | Discard and close          |
@@ -109,6 +113,7 @@ Answers are returned as:
 - **Cursor ≠ selection** — moving the cursor does not select an answer. Only `Enter` (single-select) or `Space` (multi-select) records a choice.
 - **Auto-confirm on `→`** — navigating away from a multi-select question with selections auto-confirms it. Single-select requires explicit `Enter`.
 - **Free-text + checkboxes** — on multi-select questions, you can check boxes AND type custom text. Both are included in the answer, joined by `, `.
+- **Answer notes** — press `N` to attach optional context without replacing the structured answer. On an unanswered question, the focused option is selected first.
 - **Non-interactive sessions** — if called outside an interactive session (e.g. print mode), the tool disables itself for the rest of the session so the LLM won't retry.
 - **Undo free-text** — re-open the editor, clear the text, press `Enter`. The saved answer is cleared.
 - **Change your mind** — navigate back to any tab and re-answer. Confirmed state updates automatically.
@@ -123,7 +128,7 @@ src/
   component.ts      — Interactive TUI component (pi-tui, no pi runtime needed)
   index.ts          — Extension entry point (registers the tool)
 tests/
-  component.test.ts — 108 unit tests (vitest)
+  component.test.ts — 115 unit tests (vitest)
 ```
 
 ---

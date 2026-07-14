@@ -46,6 +46,8 @@ const INPUT = {
   tab: "\t",
   shiftTab: "\x1b[Z",
   space: " ",
+  note: "n",
+  noteUpper: "N",
 } as const;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -600,6 +602,100 @@ describe("handleInput — free-text mode", () => {
   });
 });
 
+// ── handleInput — answer notes ───────────────────────────────────────────────
+
+describe("handleInput — answer notes", () => {
+  it("N selects a focused single-select answer and saves its note", () => {
+    let resolved: Result | null = null;
+    const c = make([singleSelect], (r) => {
+      resolved = r;
+    });
+
+    c.handleInput(INPUT.down); // SQLite
+    c.handleInput(INPUT.noteUpper);
+    for (const ch of "Prefer a local file") c.handleInput(ch);
+    c.handleInput(INPUT.enter);
+
+    expect(resolved?.answers["Which database should we use?"]).toBe("SQLite");
+    expect(resolved?.notes["Which database should we use?"]).toBe(
+      "Prefer a local file",
+    );
+  });
+
+  it("N checks the focused option when a multi-select has no answer", () => {
+    let resolved: Result | null = null;
+    const c = make([multiSelectQ], (r) => {
+      resolved = r;
+    });
+
+    c.handleInput(INPUT.note);
+    for (const ch of "Required for launch") c.handleInput(ch);
+    c.handleInput(INPUT.enter); // save note and return to options
+    c.handleInput(INPUT.down);
+    c.handleInput(INPUT.space); // also select Search
+    c.handleInput(INPUT.enter); // confirm
+
+    expect(resolved?.answers["Which features should we implement?"]).toBe(
+      "Auth, Search",
+    );
+    expect(resolved?.notes["Which features should we implement?"]).toBe(
+      "Required for launch",
+    );
+  });
+
+  it("renders a saved note in the question and submit review", () => {
+    const c = make([singleSelect, twoOptionsQ]);
+
+    c.handleInput(INPUT.note);
+    for (const ch of "Use the existing driver") c.handleInput(ch);
+    c.handleInput(INPUT.enter); // save note, confirm Q1, advance to Q2
+    c.handleInput(INPUT.enter); // confirm Q2, advance to Submit
+
+    const submitLines = c.render(80);
+    expect(
+      submitLines.some((line) => line.includes("Use the existing driver")),
+    ).toBe(true);
+
+    c.handleInput(INPUT.left);
+    c.handleInput(INPUT.left);
+    const questionLines = c.render(80);
+    expect(
+      questionLines.some((line) => line.includes("Use the existing driver")),
+    ).toBe(true);
+  });
+
+  it("saving an empty note clears the previous note", () => {
+    const c = make([singleSelect, twoOptionsQ]);
+
+    c.handleInput(INPUT.note);
+    for (const ch of "temporary") c.handleInput(ch);
+    c.handleInput(INPUT.enter); // advance to Q2
+    c.handleInput(INPUT.left); // return to Q1
+    c.handleInput(INPUT.note);
+    for (let i = 0; i < "temporary".length; i++) c.handleInput("\x7f");
+    c.handleInput(INPUT.enter);
+
+    expect(c.render(80).some((line) => line.includes("temporary"))).toBe(false);
+  });
+
+  it("Escape discards a note draft", () => {
+    let resolved: Result | null = null;
+    const c = make([singleSelect], (r) => {
+      resolved = r;
+    });
+
+    c.handleInput(INPUT.note);
+    for (const ch of "discard me") c.handleInput(ch);
+    c.handleInput(INPUT.escape);
+    c.handleInput(INPUT.enter);
+
+    expect(resolved?.answers["Which database should we use?"]).toBe(
+      "PostgreSQL",
+    );
+    expect(resolved?.notes).toEqual({});
+  });
+});
+
 // ── handleInput — multi-question tab navigation ───────────────────────────────
 
 describe("handleInput — multi-question tab navigation", () => {
@@ -761,6 +857,27 @@ describe("full round-trip", () => {
 
     expect(resolved?.questions).toHaveLength(4);
     expect(Object.keys(resolved?.answers)).toHaveLength(4);
+    expect(resolved?.cancelled).toBe(false);
+  });
+
+  it("six questions — all answered", () => {
+    const q = (n: number): Question => ({
+      question: `Question ${n}`,
+      header: `Q${n}`,
+      options: [{ label: `Opt${n}A` }, { label: `Opt${n}B` }],
+      multiSelect: false,
+    });
+    const questions = [q(1), q(2), q(3), q(4), q(5), q(6)];
+    let resolved: Result | null = null;
+    const c = make(questions, (r) => {
+      resolved = r;
+    });
+
+    for (let i = 0; i < questions.length; i++) c.handleInput(INPUT.enter);
+    c.handleInput(INPUT.enter); // Submit
+
+    expect(resolved?.questions).toHaveLength(6);
+    expect(Object.keys(resolved?.answers)).toHaveLength(6);
     expect(resolved?.cancelled).toBe(false);
   });
 
@@ -1531,14 +1648,15 @@ describe("coverage — schema.ts", () => {
     expect(QuestionSchema.properties.options.maxItems).toBe(4);
   });
 
-  it("InputSchema constrains questions to 1–4", () => {
+  it("InputSchema constrains questions to 1–6", () => {
     expect(InputSchema.properties.questions.minItems).toBe(1);
-    expect(InputSchema.properties.questions.maxItems).toBe(4);
+    expect(InputSchema.properties.questions.maxItems).toBe(6);
   });
 
-  it("ResultSchema has questions, answers, cancelled", () => {
+  it("ResultSchema has questions, answers, notes, cancelled", () => {
     expect(ResultSchema.properties.questions).toBeDefined();
     expect(ResultSchema.properties.answers).toBeDefined();
+    expect(ResultSchema.properties.notes).toBeDefined();
     expect(ResultSchema.properties.cancelled).toBeDefined();
     expect(ResultSchema.properties.cancelled.type).toBe("boolean");
   });

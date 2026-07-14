@@ -36,8 +36,8 @@ export const QuestionSchema = Type.Object({
 export const InputSchema = Type.Object({
   questions: Type.Array(QuestionSchema, {
     minItems: 1,
-    maxItems: 4,
-    description: "1 to 4 questions to ask the user",
+    maxItems: 6,
+    description: "1 to 6 questions to ask the user",
   }),
 });
 
@@ -50,6 +50,7 @@ export type Question = Static<typeof QuestionSchema>;
 //   Single-select:       { [question]: "Label" }
 //   Multi-select joined: { [question]: "Label A, Label C" }  (sorted by option index)
 //   Free-text:           { [question]: "user typed text" }
+//   Note:                { [question]: "extra context" }
 //   Cancelled:           key absent from answers; cancelled: true
 
 export const ResultSchema = Type.Object({
@@ -62,6 +63,9 @@ export const ResultSchema = Type.Object({
   // Free-text: the user's typed string verbatim
   // Cancelled: key absent (see cancelled flag)
   answers: Type.Record(Type.String(), Type.String()),
+
+  // Optional context attached to a question's structured answer.
+  notes: Type.Record(Type.String(), Type.String()),
 
   // True when the user pressed Esc before submitting
   cancelled: Type.Boolean(),

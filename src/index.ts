@@ -8,7 +8,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "ask_user_question",
     label: "Ask User",
-    description: `Ask the user 1–4 clarifying questions before proceeding.
+    description: `Ask the user 1–6 clarifying questions before proceeding.
 Use this tool to:
 1. Clarify ambiguous instructions
 2. Get the user's preference between valid approaches
@@ -18,6 +18,7 @@ Each question must have 2–4 options. Users can always select "Other" to type a
 Option labels should be concise (1–5 words).
 Set multiSelect: true when more than one option can validly apply at the same time.
 The header field is a short label (max 12 characters) used in the tab bar when showing multiple questions.
+Users can press N to attach optional extra context to their selected answer.
 If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label.
 Always use this tool instead of asking questions in plain text — it provides a structured, interactive UI.`,
 
@@ -32,6 +33,7 @@ Always use this tool instead of asking questions in plain text — it provides a
           details: {
             questions: params.questions,
             answers: {},
+            notes: {},
             cancelled: true,
           } satisfies Result,
         };
@@ -52,6 +54,7 @@ Always use this tool instead of asking questions in plain text — it provides a
           details: {
             questions: params.questions,
             answers: {},
+            notes: {},
             cancelled: true,
           } satisfies Result,
         };
@@ -68,15 +71,17 @@ Always use this tool instead of asking questions in plain text — it provides a
           details: {
             questions: params.questions,
             answers: {},
+            notes: {},
             cancelled: true,
           } satisfies Result,
         };
       }
 
-      const summaryLines = result.questions.map(
-        (q) =>
-          `"${q.question}" = "${result.answers[q.question] ?? "(no answer)"}"`,
-      );
+      const summaryLines = result.questions.map((q) => {
+        const answer = `"${q.question}" = "${result.answers[q.question] ?? "(no answer)"}"`;
+        const note = result.notes[q.question];
+        return note ? `${answer}\n  Note: ${note}` : answer;
+      });
 
       return {
         content: [{ type: "text", text: summaryLines.join("\n") }],
@@ -111,11 +116,12 @@ Always use this tool instead of asking questions in plain text — it provides a
       const box = new Box(0, 0);
       for (const q of details.questions) {
         const answer = details.answers[q.question] ?? "(no answer)";
+        const note = details.notes[q.question];
         box.addChild(
           new TruncatedText(
             theme.fg("success", "✓ ") +
               theme.fg("accent", `${q.header}: `) +
-              theme.fg("text", answer),
+              theme.fg("text", note ? `${answer} — note: ${note}` : answer),
             0,
             0,
           ),

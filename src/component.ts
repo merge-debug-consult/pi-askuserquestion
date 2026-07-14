@@ -29,8 +29,12 @@ interface QuestionState {
   confirmed: boolean;
   /** Free-text answer typed by the user; null = free-text not chosen */
   freeTextValue: string | null;
+  /** Optional context attached to this question's answer */
+  noteValue: string | null;
   /** Whether the inline Editor is currently active */
   inEditMode: boolean;
+  /** Whether the active editor is changing the note rather than free text */
+  editingNote: boolean;
 }
 
 type DisplayOption = Option & { isOther?: true };
@@ -70,7 +74,9 @@ export class AskUserQuestionComponent implements Component {
       selectedIndices: new Set<number>(),
       confirmed: false,
       freeTextValue: null,
+      noteValue: null,
       inEditMode: false,
+      editingNote: false,
     }));
 
     const editorTheme: EditorTheme = {
@@ -239,8 +245,9 @@ export class AskUserQuestionComponent implements Component {
         add(`${prefix} ${box} ${t.fg(labelColor, `${i + 1}. ${opt.label}`)}`);
       } else if (isOther) {
         // "Type your own answer..." row — check/box matches sibling row format
-        const hasFreeText = state.freeTextValue !== null && !state.inEditMode;
-        const suffix = state.inEditMode ? t.fg("accent", " ✎") : "";
+        const editingFreeText = state.inEditMode && !state.editingNote;
+        const hasFreeText = state.freeTextValue !== null && !editingFreeText;
+        const suffix = editingFreeText ? t.fg("accent", " ✎") : "";
         const labelColor = isSelected ? "accent" : "muted";
         if (q.multiSelect) {
           // Match multi-select box format: prefix + ' ' + box(3) + ' ' + label
@@ -285,10 +292,15 @@ export class AskUserQuestionComponent implements Component {
       }
     }
 
+    if (state.noteValue !== null && !(state.inEditMode && state.editingNote)) {
+      add("");
+      add(t.fg("muted", ` Note: ${state.noteValue}`));
+    }
+
     // Inline editor (when in edit mode)
     if (state.inEditMode) {
       add("");
-      add(t.fg("muted", " Your answer:"));
+      add(t.fg("muted", state.editingNote ? " Note:" : " Your answer:"));
       const editorLines = this.editor.render(width - 4);
       for (const line of editorLines) {
         add(` ${line}`);
@@ -299,7 +311,7 @@ export class AskUserQuestionComponent implements Component {
 
     // Footer help — context-sensitive based on cursor position
     if (state.inEditMode) {
-      add(t.fg("dim", " Enter submit · Esc back"));
+      add(t.fg("dim", " Enter save · Esc discard"));
     } else {
       const onOther = state.cursorIndex === opts.length - 1;
       const tabHint = this.isSingle ? "" : " · ←→ switch tabs";
@@ -311,7 +323,12 @@ export class AskUserQuestionComponent implements Component {
       } else {
         actionHint = "Enter select";
       }
-      add(t.fg("dim", ` ↑↓ navigate · ${actionHint}${tabHint} · Esc cancel`));
+      add(
+        t.fg(
+          "dim",
+          ` ↑↓ navigate · ${actionHint} · N add note${tabHint} · Esc cancel`,
+        ),
+      );
     }
   }
 
@@ -334,6 +351,9 @@ export class AskUserQuestionComponent implements Component {
           t.fg("muted", ` ${truncateToWidth(q.header, 12)}: `) +
             t.fg("text", answer),
         );
+        if (state.noteValue !== null) {
+          add(t.fg("muted", `   Note: ${state.noteValue}`));
+        }
       } else {
         add(
           t.fg("dim", ` ${truncateToWidth(q.header, 12)}: `) +
@@ -400,32 +420,46 @@ export class AskUserQuestionComponent implements Component {
   private enterEditMode(): void {
     const state = this.states[this.activeTab];
     state.inEditMode = true;
-    // Restore previous free-text value if any
-    if (state.freeTextValue !== null) {
-      this.editor.setText(state.freeTextValue);
-    } else {
-      this.editor.setText("");
-    }
+    state.editingNote = false;
+    this.editor.setText(state.freeTextValue ?? "");
     this.invalidate();
     this.tui.requestRender();
   }
 
-  private exitEditMode(save: boolean): void {
+  private enterNoteMode(): void {
+    const state = this.states[this.activeTab];
+    state.inEditMode = true;
+    state.editingNote = true;
+    this.editor.setText(state.noteValue ?? "");
+    this.invalidate();
+    this.tui.requestRender();
+  }
+
+  private closeEditor(): void {
+    const state = this.states[this.activeTab];
+    this.editor.setText("");
+    state.inEditMode = false;
+    state.editingNote = false;
+    this.invalidate();
+  }
+
+  private exitFreeTextEditMode(save: boolean): void {
     const state = this.states[this.activeTab];
     if (save) {
       state.freeTextValue = this.editor.getText().trim();
       // Free-text replaces any prior regular-option selection — clear the ✓ indicator
       state.selectedIndex = null;
-    } else {
-      // Discard typed text — clear freeTextValue only if it was never confirmed
-      // (if confirmed, freeTextValue holds the answer — don't touch it)
-      if (!state.confirmed) {
-        state.freeTextValue = null;
-      }
+    } else if (!state.confirmed) {
+      // Preserve an existing confirmed answer when a draft is discarded.
+      state.freeTextValue = null;
     }
-    this.editor.setText("");
-    state.inEditMode = false;
-    this.invalidate();
+    this.closeEditor();
+  }
+
+  private saveNote(): void {
+    const state = this.states[this.activeTab];
+    state.noteValue = this.editor.getText().trim() || null;
+    this.closeEditor();
   }
 
   private autoConfirmIfAnswered(): void {
@@ -475,6 +509,7 @@ export class AskUserQuestionComponent implements Component {
 
   private buildResult(): Result {
     const answers: Record<string, string> = {};
+    const notes: Record<string, string> = {};
     for (let i = 0; i < this.questions.length; i++) {
       const q = this.questions[i];
       const s = this.states[i];
@@ -490,8 +525,11 @@ export class AskUserQuestionComponent implements Component {
       } else if (s.selectedIndex !== null) {
         answers[q.question] = q.options[s.selectedIndex].label;
       }
+      if (s.noteValue !== null) {
+        notes[q.question] = s.noteValue;
+      }
     }
-    return { questions: this.questions, answers, cancelled: false };
+    return { questions: this.questions, answers, notes, cancelled: false };
   }
 
   // ── handleInput() ────────────────────────────────────────────────────────────
@@ -532,14 +570,29 @@ export class AskUserQuestionComponent implements Component {
     // ── Edit mode: route to inline editor ──────────────────────────────────────
     if (state.inEditMode) {
       if (matchesKey(data, Key.escape)) {
-        this.exitEditMode(false);
+        if (state.editingNote) {
+          this.closeEditor();
+        } else {
+          this.exitFreeTextEditMode(false);
+        }
         this.tui.requestRender();
         return;
       }
       if (matchesKey(data, Key.enter)) {
+        if (state.editingNote) {
+          const shouldAdvance = !q.multiSelect && !state.confirmed;
+          this.saveNote();
+          if (shouldAdvance) {
+            this.confirmAndAdvance();
+          } else {
+            this.tui.requestRender();
+          }
+          return;
+        }
+
         const text = this.editor.getText().trim();
         if (text) {
-          this.exitEditMode(true);
+          this.exitFreeTextEditMode(true);
           // Multi-select: just return to options so user can still toggle checkboxes
           // Single-select: auto-confirm since free-text is the only answer
           if (!q.multiSelect) {
@@ -551,8 +604,6 @@ export class AskUserQuestionComponent implements Component {
           // Empty text — clear any previously saved free-text answer
           state.freeTextValue = null;
           // If nothing else is selected, un-confirm so Submit tab blocks correctly.
-          // Multi-select: un-confirm only if no boxes are checked.
-          // Single-select: un-confirm only if no option is selected.
           if (q.multiSelect) {
             if (state.selectedIndices.size === 0) {
               state.confirmed = false;
@@ -560,7 +611,7 @@ export class AskUserQuestionComponent implements Component {
           } else if (state.selectedIndex === null) {
             state.confirmed = false;
           }
-          this.exitEditMode(false);
+          this.closeEditor();
           this.tui.requestRender();
         }
         return;
@@ -605,6 +656,21 @@ export class AskUserQuestionComponent implements Component {
 
     const opts = this.allOptions(q);
     const onOther = state.cursorIndex === opts.length - 1;
+
+    if (data === "n" || data === "N") {
+      if (onOther) {
+        if (state.freeTextValue === null) return;
+      } else if (q.multiSelect) {
+        if (state.selectedIndices.size === 0) {
+          state.selectedIndices.add(state.cursorIndex);
+        }
+      } else {
+        state.selectedIndex = state.cursorIndex;
+        state.freeTextValue = null;
+      }
+      this.enterNoteMode();
+      return;
+    }
 
     // "Type your own answer..." — Space or Tab opens the editor
     // Enter confirms if there's already a saved free-text answer
