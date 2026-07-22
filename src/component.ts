@@ -446,7 +446,7 @@ export class AskUserQuestionComponent implements Component {
   private exitFreeTextEditMode(save: boolean): void {
     const state = this.states[this.activeTab];
     if (save) {
-      state.freeTextValue = this.editor.getText().trim();
+      state.freeTextValue = this.editor.getExpandedText().trim();
       // Free-text replaces any prior regular-option selection — clear the ✓ indicator
       state.selectedIndex = null;
     } else if (!state.confirmed) {
@@ -458,7 +458,7 @@ export class AskUserQuestionComponent implements Component {
 
   private saveNote(): void {
     const state = this.states[this.activeTab];
-    state.noteValue = this.editor.getText().trim() || null;
+    state.noteValue = this.editor.getExpandedText().trim() || null;
     this.closeEditor();
   }
 
@@ -590,7 +590,7 @@ export class AskUserQuestionComponent implements Component {
           return;
         }
 
-        const text = this.editor.getText().trim();
+        const text = this.editor.getExpandedText().trim();
         if (text) {
           this.exitFreeTextEditMode(true);
           // Multi-select: just return to options so user can still toggle checkboxes

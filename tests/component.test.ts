@@ -600,6 +600,21 @@ describe("handleInput — free-text mode", () => {
     expect(resolved?.cancelled).toBe(false);
     expect(resolved?.answers["Which database should we use?"]).toBe("hello");
   });
+
+  it("returns the original content of a collapsed long paste", () => {
+    let resolved: Result | null = null;
+    const c = make([singleSelect], (r) => {
+      resolved = r;
+    });
+    const pastedText = "x".repeat(1001);
+
+    for (let i = 0; i < 10; i++) c.handleInput(INPUT.down);
+    c.handleInput(INPUT.space);
+    c.handleInput(`\x1b[200~${pastedText}\x1b[201~`);
+    c.handleInput(INPUT.enter);
+
+    expect(resolved?.answers["Which database should we use?"]).toBe(pastedText);
+  });
 });
 
 // ── handleInput — answer notes ───────────────────────────────────────────────
@@ -620,6 +635,20 @@ describe("handleInput — answer notes", () => {
     expect(resolved?.notes["Which database should we use?"]).toBe(
       "Prefer a local file",
     );
+  });
+
+  it("returns the original content of a collapsed long note paste", () => {
+    let resolved: Result | null = null;
+    const c = make([singleSelect], (r) => {
+      resolved = r;
+    });
+    const pastedNote = "n".repeat(1001);
+
+    c.handleInput(INPUT.note);
+    c.handleInput(`\x1b[200~${pastedNote}\x1b[201~`);
+    c.handleInput(INPUT.enter);
+
+    expect(resolved?.notes["Which database should we use?"]).toBe(pastedNote);
   });
 
   it("N checks the focused option when a multi-select has no answer", () => {
